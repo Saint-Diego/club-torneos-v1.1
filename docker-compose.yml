@@ -1,4 +1,4 @@
-name: club-torneos
+name: club-torneos-v1.1
 
 x-logging: &default-logging
   driver: json-file
@@ -8,7 +8,7 @@ x-logging: &default-logging
 
 services:
   backend:
-    image: ${IMAGE_PREFIX:-club-torneos}/backend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-club-torneos-v1.1}/backend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -51,7 +51,7 @@ services:
       - internal
 
   frontend:
-    image: ${IMAGE_PREFIX:-club-torneos}/frontend:${IMAGE_TAG:-latest}
+    image: ${IMAGE_PREFIX:-club-torneos-v1.1}/frontend:${IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: frontend/Dockerfile
