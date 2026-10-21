@@ -1,0 +1,116 @@
+name: club-torneos
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  backend:
+    image: ${IMAGE_PREFIX:-club-torneos}/backend:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      MONGODB_URI: ${MONGODB_URI:?Define MONGODB_URI en el archivo .env}
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en el archivo .env (mínimo 32 caracteres)}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Bogota}
+      AUDIT_RETENTION_DAYS: ${AUDIT_RETENTION_DAYS:-365}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      API_RATE_LIMIT_MAX: ${API_RATE_LIMIT_MAX:-1000}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-20}
+    expose:
+      - "4000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:4000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    logging: *default-logging
+    networks:
+      - internal
+
+  frontend:
+    image: ${IMAGE_PREFIX:-club-torneos}/frontend:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      # Con HTTPS (perfil tls) usa FRONTEND_BIND=127.0.0.1 para no exponer nginx directamente.
+      - "${FRONTEND_BIND:-0.0.0.0}:${HTTP_PORT:-8080}:8080"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    logging: *default-logging
+    networks:
+      - internal
+
+  # Solo para desarrollo/staging sin Atlas:  docker compose --profile local-db up -d
+  # y MONGODB_URI=mongodb://mongo:27017/club_torneos
+  mongo:
+    profiles: ["local-db"]
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging: *default-logging
+    networks:
+      - internal
+
+  # HTTPS automático:  docker compose --profile tls up -d
+  caddy:
+    profiles: ["tls"]
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - frontend
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    logging: *default-logging
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  mongo-data:
+  caddy-data:
+  caddy-config:

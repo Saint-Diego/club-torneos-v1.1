@@ -1,0 +1,80 @@
+# Variables sustituidas al arrancar (envsubst, filtro BACKEND_): BACKEND_HOST, BACKEND_PORT, BACKEND_RESOLVER.
+# El resto de $variables son de nginx y no se tocan.
+
+# Ip real del cliente cuando hay un proxy previo en la red de Docker (p. ej. Caddy).
+set_real_ip_from 10.0.0.0/8;
+set_real_ip_from 172.16.0.0/12;
+set_real_ip_from 192.168.0.0/16;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+
+# Esquema original de la petición: el que informa el proxy previo (Caddy) o, si no hay, el propio.
+map $http_x_forwarded_proto $forwarded_proto {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+
+server {
+  listen 8080;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  resolver ${BACKEND_RESOLVER} valid=10s ipv6=off;
+  set $backend http://${BACKEND_HOST}:${BACKEND_PORT};
+
+  gzip on;
+  gzip_comp_level 5;
+  gzip_min_length 512;
+  gzip_vary on;
+  gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+  server_tokens off;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+  # Logos de patrocinadores y escudos son URLs https externas → img-src https:.
+  add_header Content-Security-Policy "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; connect-src 'self' ws: wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'" always;
+
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok";
+  }
+
+  location /api/ {
+    proxy_pass $backend;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    proxy_read_timeout 60s;
+    client_max_body_size 1m;
+  }
+
+  location /socket.io/ {
+    proxy_pass $backend;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+  }
+
+  # Archivos con hash en el nombre: caché larga. (Se usa `expires` y no `add_header` para no
+  # anular los encabezados de seguridad definidos arriba: add_header en un location reemplaza los heredados.)
+  location /assets/ {
+    expires 1y;
+    try_files $uri =404;
+  }
+
+  # SPA: cualquier ruta del cliente devuelve index.html, sin caché para tomar nuevas versiones.
+  location / {
+    expires -1;
+    try_files $uri /index.html;
+  }
+}

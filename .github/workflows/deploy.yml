@@ -1,0 +1,54 @@
+name: Deploy
+
+# Despliegue manual (y reversible: indica cualquier tag publicado para volver a una versión anterior).
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag de las imágenes (latest, sha-abc1234, 1.2.0…)'
+        required: true
+        default: latest
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production   # permite exigir aprobación manual en Settings → Environments
+    steps:
+      - name: Prefijo de imagen en minúsculas
+        run: echo "IMAGE_PREFIX=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - name: Actualizar servicios por SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_PREFIX: ${{ env.IMAGE_PREFIX }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: IMAGE_PREFIX,IMAGE_TAG,GHCR_USER,GHCR_TOKEN
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${{ vars.DEPLOY_PATH }}"
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+            export IMAGE_PREFIX IMAGE_TAG
+            docker compose pull backend frontend
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            PORT_PUBLISHED=$(grep -E '^HTTP_PORT=' .env | cut -d= -f2- || true)
+            PORT_PUBLISHED=${PORT_PUBLISHED:-8080}
+            for i in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${PORT_PUBLISHED}/healthz" >/dev/null; then echo "Servicio disponible"; exit 0; fi
+              sleep 2
+            done
+            echo "El servicio no respondió a tiempo" >&2
+            docker compose logs --tail=80 backend frontend
+            exit 1
