@@ -15,7 +15,7 @@ ARG VITE_API_URL=
 ENV VITE_API_URL=${VITE_API_URL}
 RUN npm run build -w frontend
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS runtime
 ENV BACKEND_HOST=backend \
     BACKEND_PORT=4000 \
     BACKEND_RESOLVER=127.0.0.11 \
