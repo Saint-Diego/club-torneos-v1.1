@@ -26,7 +26,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.7.0",
     "morgan": "^1.10.0",
-    "pdfkit": "^0.15.0",
+    "pdfkit": "^0.20.2",
     "socket.io": "^4.8.0",
     "zod": "^3.23.8"
   },
@@ -37,7 +37,7 @@
     "@types/jsonwebtoken": "^9.0.7",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.16.0",
-    "@types/pdfkit": "^0.13.4",
+    "@types/pdfkit": "^0.17.6",
     "@types/supertest": "^6.0.2",
     "mongodb-memory-server": "^10.1.2",
     "supertest": "^7.0.0",
