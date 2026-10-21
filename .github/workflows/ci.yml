@@ -28,7 +28,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck -w backend
       - run: npm run test:unit -w backend
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .mongodb-binaries
           key: mongodb-binaries-${{ runner.os }}-${{ env.MONGOMS_VERSION }}
